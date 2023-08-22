@@ -27629,7 +27629,7 @@ namespace std
 
 
 # 5 "F:\\my projects\\LSEG Project\\OrderBookEntry.h"
-enum class OrderBookType{bid,ask};
+enum class OrderBookType{bid,ask,unknown};
 
 class OrderBookEntry
 {
@@ -27640,6 +27640,8 @@ class OrderBookEntry
                          std::string _product,
                          OrderBookType _orderType);
 
+
+          static OrderBookType stringToOrderBookType(std::string s);
 
           double price;
           double amount;
@@ -27674,6 +27676,25 @@ class MerkelMain
 
 };
 # 6 "F:\\my projects\\LSEG Project\\main.cpp" 2
+# 1 "F:\\my projects\\LSEG Project\\CSVReader.h" 1
+       
+
+
+
+
+
+class CSVReader
+{
+    public:
+      CSVReader();
+
+      static std:: vector<OrderBookEntry> readCSV(std::string csvFile);
+
+    private:
+      static std::vector<std::string> tokenise(std::string csvLine,char separator);
+      static OrderBookEntry stringToOBE(std::vector<std::string> strings);
+};
+# 7 "F:\\my projects\\LSEG Project\\main.cpp" 2
 
 int main()
 {
