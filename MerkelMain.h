@@ -1,5 +1,6 @@
 #include <vector>
 #include "OrderBookEntry.h"
+#include "OrderBook.h"
 
 class MerkelMain
 {
@@ -19,6 +20,7 @@ class MerkelMain
         void gotoNextTimeframe();
         void processUserOption(int userOption);
 
+        OrderBook orderBook{"DataSet.csv"};
         std::vector<OrderBookEntry> orders;
 
 };
