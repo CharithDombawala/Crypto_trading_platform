@@ -20,7 +20,9 @@ class MerkelMain
         void gotoNextTimeframe();
         void processUserOption(int userOption);
 
+        std::string currentTime;
+
         OrderBook orderBook{"DataSet.csv"};
-        std::vector<OrderBookEntry> orders;
+        //std::vector<OrderBookEntry> orders;
 
 };

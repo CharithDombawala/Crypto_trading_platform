@@ -5,6 +5,8 @@
 #include "CSVReader.h"
 
 
+
+
  MerkelMain::MerkelMain()
 {
 
@@ -16,6 +18,7 @@ void MerkelMain::init()
 {  
     
    int input;
+   currentTime = orderBook.getEarliestTime();
    while(true)
    {    
        printMenu();
@@ -43,14 +46,25 @@ void  MerkelMain::printMenu()
     std :: cout << "6: Continue"<< std:: endl;
     
     std :: cout << "==============="<< std:: endl;
+
+    std :: cout << "Current time is: "<< currentTime << std:: endl;
+
+
     
 }
 
 int MerkelMain::getUserOption()
 {   
-    int userOption ;
+    int userOption =0 ;
+    std::string line;
     std :: cout << "Type in 1-6" << std:: endl;
-    std::cin >> userOption;
+    std::getline(std::cin,line);
+    try{
+    userOption = std::stoi(line);
+    }catch(const std::exception& e)
+    {
+       //
+    }
     std :: cout << "You chose:"<< userOption << std:: endl;
     return userOption;
 }
@@ -73,8 +87,7 @@ void MerkelMain::printMarketstats()
      {
 
           std:: cout << "product: " << p << std::endl;
-          std::vector<OrderBookEntry> entries =orderBook.getOrders(OrderBookType::ask,
-                                                                 p,"2020/03/17 17:01:24.884492");
+          std::vector<OrderBookEntry> entries =orderBook.getOrders(OrderBookType::ask,p,currentTime);
           std::cout <<"Asks seen: " << entries.size() << std::endl; 
           std::cout <<"Max ask: " << OrderBook::getHighPrice(entries) << std::endl;                                
           std::cout <<"Min ask: " << OrderBook::getLowPrice(entries) << std::endl;                                
@@ -101,7 +114,31 @@ void MerkelMain::printMarketstats()
 
 void MerkelMain::enterAsk()
 {
-  std::cout<< "Make an offer - eneter thew amount"<<std::endl;
+  std::cout<< "Make an ask - enter the amount: product,price,amount eg ETH/BTC,200,0.5"<<std::endl;
+  std::string input;
+  std::getline(std::cin,input);
+  std::vector<std::string> tokens = CSVReader::tokenise(input,',');
+  if (tokens.size()!= 3)
+  {
+     std::cout << "Bad input! "<< input << std::endl;
+  }
+  else{
+     try{
+          OrderBookEntry obe =CSVReader::stringToOBE(
+               tokens[1],
+               tokens[2],
+               currentTime,
+               tokens[0],
+               OrderBookType::ask
+         );
+         orderBook.insertOrder(obe);
+     }catch(const std::exception& e)
+     {
+          std::cout << "MerkelMain::enterAsk Bad input " << std::endl;
+     }
+  }
+  std::cout << "You typed: " << input << std::endl;
+  
 }
 
 void MerkelMain::enterBid()
@@ -117,6 +154,8 @@ void MerkelMain::printwallet()
 void MerkelMain::gotoNextTimeframe()
 {
      std::cout<< "Going to next time frame"<<std::endl;
+     currentTime = orderBook.getNextTime(currentTime);
+
 }
 
 void MerkelMain::processUserOption(int userOption)
