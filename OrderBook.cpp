@@ -1,216 +1,233 @@
-#include "OrderBook.h"
-#include "CSVReader.h"
-#include <map>
-#include <algorithm>
 #include <iostream>
+#include <fstream>
+#include <sstream>
+#include <algorithm>
+#include <string>
+#include <map>
+#include <list>
+#include <chrono>
+#include <iomanip>
 
+using namespace std;
+using namespace chrono;
 
-/** construct, reading a csv data file */
-OrderBook::OrderBook(std::string filename)
+void add_buy(list<Order> &, Order);
+void add_sell(list<Order> &, Order);
+
+class OrderBook
 {
-    orders = CSVReader::readCSV(filename);
-}
+public:
+    // Public member variables
+    list<Order> buy_side;
+    list<Order> sell_side;
 
-/** return vector of all know products in the dataset*/
-std::vector<std::string> OrderBook::getKnownProducts()
+    // insert a new order to the book 
+    list<Order> insert(Order order);
+
+    // display the current orders
+    void display();
+};
+
+list<Order> OrderBook::insert(Order order)
 {
-    std::vector<std::string> products;
+    list<Order> trades;
 
-    std::map<std::string,bool> prodMap;
-
-    for (OrderBookEntry& e : orders)
+    // if order is buy 
+    if (order.side == 1)
     {
-        prodMap[e.product] = true;
-    }
-    
-    // now flatten the map to a vector of strings
-    for (auto const& e : prodMap)
-    {
-        products.push_back(e.first);
-    }
-
-    return products;
-}
-/** return vector of Orders according to the sent filters*/
-std::vector<OrderBookEntry> OrderBook::getOrders(OrderBookType type, 
-                                        std::string product, 
-                                        std::string timestamp)
-{
-    std::vector<OrderBookEntry> orders_sub;
-    for (OrderBookEntry& e : orders)
-    {
-        if (e.orderType == type && 
-            e.product == product && 
-            e.timestamp == timestamp )
-            {
-                orders_sub.push_back(e);
-            }
-    }
-    return orders_sub;
-}
-
-
-double OrderBook::getHighPrice(std::vector<OrderBookEntry>& orders)
-{
-    double max = orders[0].price;
-    for (OrderBookEntry& e : orders)
-    {
-        if (e.price > max)max = e.price;
-    }
-    return max;
-}
-
-
-double OrderBook::getLowPrice(std::vector<OrderBookEntry>& orders)
-{
-    double min = orders[0].price;
-    for (OrderBookEntry& e : orders)
-    {
-        if (e.price < min)min = e.price;
-    }
-    return min;
-}
-
-std::string OrderBook::getEarliestTime()
-{
-    return orders[0].timestamp;
-}
-
-std::string OrderBook::getNextTime(std::string timestamp)
-{
-    std::string next_timestamp = "";
-    for (OrderBookEntry& e : orders)
-    {
-        if (e.timestamp > timestamp) 
+        list<Order>::iterator itr;
+        for (itr = sell_side.begin(); itr != sell_side.end(); ++itr)
         {
-            next_timestamp = e.timestamp;
-            break;
+            Order sell_order = *itr; // copy the sell_side order
+            Order buy_order = order; // copy the incoming buy_side order
+            int quantity;
+
+            //  if the price of the current sell-side order is greater than the incoming buy-side order; stop loop 
+            if (itr->price > order.price)
+                break;
+
+            // if sell order has some stock 
+            if (order.quantity >= itr->quantity)
+            {
+                order.quantity -= itr->quantity;
+                quantity = itr->quantity;
+                itr->quantity = 0; // Quantity of sell_side order is zero 
+            }
+            // if sell order has more stock 
+            else if (itr->quantity >= order.quantity)
+            {
+                itr->quantity = order.quantity;
+                quantity = order.quantity;
+                order.quantity = 0; // Quantity of incoming buy_side order is zero
+            }
+            else
+            {
+                break;
+            }
+
+            // update orders
+            itr->update();
+            order.update();
+
+            // set the current buy trade info 
+            buy_order.status = order.status;
+            buy_order.price = itr->price;
+            buy_order.quantity = quantity;
+            buy_order.set_transaction_time();
+
+            // set the current sell trade info 
+            sell_order.status = itr->status;
+            sell_order.price = itr->price;
+            sell_order.quantity = quantity;
+            sell_order.set_transaction_time();
+
+            // add the current order to trades list 
+            trades.push_back(buy_order);
+            trades.push_back(sell_order);
+
+            // if the seller order is complete remove from order book 
+            if (itr->status == 2)
+                itr = --sell_side.erase(itr);
+
+            // stop processing if no stocks left to buy
+            if (order.quantity == 0)
+                break;
+        }
+
+        // set order transaction time 
+        order.set_transaction_time();
+
+        // if the order is not rejected and not filled add to the book 
+        if (order.status != 1 && order.status != 2) 
+            add_buy(buy_side, order);
+
+        // if the order is new 
+        if (order.status == 0)
+            trades.push_back(order);
+    }
+
+    // if the order is sell 
+    if (order.side == 2)
+    {
+        list<Order>::iterator itr;
+        for (itr = buy_side.begin(); itr != buy_side.end(); ++itr)
+        {
+            Order buy_order = *itr;
+            Order sell_order = order;
+            int quantity;
+
+            // if the sell order price is greater; stop loop 
+            if (order.price > itr->price)
+                break;
+
+            // if sell order has more stock 
+            if (order.quantity >= itr->quantity)
+            {
+                order.quantity -= itr->quantity;
+                quantity = itr->quantity;
+                itr->quantity = 0;
+            }
+            // if sell order has some stock 
+            else if (itr->quantity >= order.quantity)
+            {
+                itr->quantity -= order.quantity;
+                quantity = order.quantity;
+                order.quantity = 0;
+            }
+            else
+            {
+                break;
+            }
+
+            // update orders 
+            itr->update();
+            order.update();
+
+            // set the current buy trade info 
+            buy_order.status = itr->status;
+            buy_order.price = itr->price;
+            buy_order.quantity = quantity;
+            buy_order.set_transaction_time();
+
+            // set the current sell trade info 
+            sell_order.status = order.status;
+            sell_order.price = itr->price;
+            sell_order.quantity = quantity;
+            sell_order.set_transaction_time();
+
+            // add the current order to trades list 
+            trades.push_back(sell_order);
+            trades.push_back(buy_order);
+
+            // if the buyer order is complete remove from order book
+            if (itr->status == 2)
+                itr = --buy_side.erase(itr);
+
+            // stop processing if no stocks 
+            if (order.quantity == 0)
+                break;
+        }
+
+        // set order transaction time 
+        order.set_transaction_time();
+
+        // if the order is not rejected and not filled add to the book 
+        if (order.status != 1 && order.status != 2) 
+            add_sell(sell_side, order);
+
+        // if the order is new 
+        if (order.status == 0)
+            trades.push_back(order);
+    }
+
+    return trades;
+}
+void OrderBook::display()
+{
+    cout << "=== Buy Side ===\n" << endl;
+    list<Order>::iterator b_itr;
+    for (b_itr = buy_side.begin(); b_itr != buy_side.end(); ++b_itr)
+    {
+        b_itr->display();
+    }
+    cout << endl;
+
+    cout << "\n=== Sell Side ===\n" << endl;
+    list<Order>::iterator s_itr;
+    for (s_itr = sell_side.begin(); s_itr != sell_side.end(); ++s_itr)
+    {
+        s_itr->display();
+    }
+    cout << endl;
+}
+
+
+// to insert buy orders in ascending order of price
+void add_buy(list<Order> &buyOrders, Order order) 
+{
+    list<Order>::iterator itr;
+    for (itr = buyOrders.begin(); itr != buyOrders.end(); ++itr)
+    {
+        if (order.price >= itr->price)
+        {
+            buyOrders.insert(itr, order);
+            return;
         }
     }
-    if (next_timestamp == "")
-    {
-        next_timestamp = orders[0].timestamp;
-    }
-    return next_timestamp;
+    buyOrders.push_back(order);
 }
 
-void OrderBook::insertOrder(OrderBookEntry& order)
+// to insert sell orders in descending order of price
+void add_sell(list<Order> &sellOrders, Order order)
 {
-    orders.push_back(order);
-    std::sort(orders.begin(), orders.end(), OrderBookEntry::compareByTimestamp);
-}
-
-std::vector<OrderBookEntry> OrderBook::matchAsksToBids(std::string product, std::string timestamp)
-{
-// asks = orderbook.asks
-    std::vector<OrderBookEntry> asks = getOrders(OrderBookType::ask, 
-                                                 product, 
-                                                 timestamp);
-// bids = orderbook.bids
-    std::vector<OrderBookEntry> bids = getOrders(OrderBookType::bid, 
-                                                 product, 
-                                                    timestamp);
-
-    // sales = []
-    std::vector<OrderBookEntry> sales; 
-
-    // I put in a little check to ensure we have bids and asks
-    // to process.
-    if (asks.size() == 0 || bids.size() == 0)
+    list<Order>::iterator itr;
+    for (itr = sellOrders.begin(); itr != sellOrders.end(); ++itr)
     {
-        std::cout << " OrderBook::matchAsksToBids no bids or asks" << std::endl;
-        return sales;
-    }
-
-    // sort asks lowest first
-    std::sort(asks.begin(), asks.end(), OrderBookEntry::compareByPriceAsc);
-    // sort bids highest first
-    std::sort(bids.begin(), bids.end(), OrderBookEntry::compareByPriceDesc);
-    // for ask in asks:
-    std::cout << "max ask " << asks[asks.size()-1].price << std::endl;
-    std::cout << "min ask " << asks[0].price << std::endl;
-    std::cout << "max bid " << bids[0].price << std::endl;
-    std::cout << "min bid " << bids[bids.size()-1].price << std::endl;
-    
-    for (OrderBookEntry& ask : asks)
-    {
-    //     for bid in bids:
-        for (OrderBookEntry& bid : bids)
+        if (itr->price >= order.price)
         {
-    //         if bid.price >= ask.price # we have a match
-            if (bid.price >= ask.price)
-            {
-    //             sale = new order()
-    //             sale.price = ask.price
-            OrderBookEntry sale{ask.price, 0, timestamp, 
-                product, 
-                OrderBookType::asksale};
-
-                if (bid.username == "simuser")
-                {
-                    sale.username = "simuser";
-                    sale.orderType = OrderBookType::bidsale;
-                }
-                if (ask.username == "simuser")
-                {
-                    sale.username = "simuser";
-                    sale.orderType =  OrderBookType::asksale;
-                }
-            
-    //             # now work out how much was sold and 
-    //             # create new bids and asks covering 
-    //             # anything that was not sold
-    //             if bid.amount == ask.amount: # bid completely clears ask
-                if (bid.amount == ask.amount)
-                {
-    //                 sale.amount = ask.amount
-                    sale.amount = ask.amount;
-    //                 sales.append(sale)
-                    sales.push_back(sale);
-    //                 bid.amount = 0 # make sure the bid is not processed again
-                    bid.amount = 0;
-    //                 # can do no more with this ask
-    //                 # go onto the next ask
-    //                 break
-                    break;
-                }
-    //           if bid.amount > ask.amount:  # ask is completely gone slice the bid
-                if (bid.amount > ask.amount)
-                {
-    //                 sale.amount = ask.amount
-                    sale.amount = ask.amount;
-    //                 sales.append(sale)
-                    sales.push_back(sale);
-    //                 # we adjust the bid in place
-    //                 # so it can be used to process the next ask
-    //                 bid.amount = bid.amount - ask.amount
-                    bid.amount =  bid.amount - ask.amount;
-    //                 # ask is completely gone, so go to next ask                
-    //                 break
-                    break;
-                }
-
-
-    //             if bid.amount < ask.amount # bid is completely gone, slice the ask
-                if (bid.amount < ask.amount && 
-                   bid.amount > 0)
-                {
-    //                 sale.amount = bid.amount
-                    sale.amount = bid.amount;
-    //                 sales.append(sale)
-                    sales.push_back(sale);
-    //                 # update the ask
-    //                 # and allow further bids to process the remaining amount
-    //                 ask.amount = ask.amount - bid.amount
-                    ask.amount = ask.amount - bid.amount;
-    //                 bid.amount = 0 # make sure the bid is not processed again
-                    bid.amount = 0;
-    //                 # some ask remains so go to the next bid
-    //                 continue
-                    continue;
-                }
-            }
+            sellOrders.insert(itr, order);
+            return;
         }
     }
-    return sales;             
+    sellOrders.push_back(order);
 }
